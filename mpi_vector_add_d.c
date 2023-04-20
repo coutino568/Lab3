@@ -29,10 +29,11 @@
 
 void Check_for_error(int local_ok, char fname[], char message[],
       MPI_Comm comm);
-void Read_n(int* n_p, int* local_n_p, int my_rank, int comm_sz,
-      MPI_Comm comm);
-void Allocate_vectors(double** local_x_pp, double** local_y_pp,
-      double** local_z_pp, int local_n, MPI_Comm comm);
+void Read_n( int* n_p, int* local_n_p, double* scalar, 
+      int my_rank, int comm_sz, MPI_Comm comm);
+void Allocate_vectors( double** local_x_pp, double** local_y_pp, 
+      double** scaled_local_x_pp, double** scaled_local_y_pp, 
+      int local_n, MPI_Comm comm) ;
 void Read_vector(double local_a[], int local_n, int n, char vec_name[],
       int my_rank, MPI_Comm comm);
 void Initialize_vector(double local_a[], int local_n, int n, char vec_name[],
@@ -41,13 +42,17 @@ void Print_vector(double local_b[], int local_n, int n, char title[],
       int my_rank, MPI_Comm comm);
 void Parallel_vector_sum(double local_x[], double local_y[],
       double local_z[], int local_n);
-
+void Parallel_vector_dot_product( double  local_x[], double  local_y[], 
+      double *total_sum, MPI_Comm comm, int local_n); 
+void Parallel_vector_scalar_mul( double local_in[], double local_out[], 
+      double scalar, int local_n);
 
 /*-------------------------------------------------------------------*/
 int main(void) {
    int n, local_n;
    int comm_sz, my_rank;
-   double *local_x, *local_y, *local_z;
+   double *local_x, *local_y, *scaled_local_x, *scaled_local_y;
+   double scalar, dot_prod;
    MPI_Comm comm;
    double tstart, tend;
 
@@ -60,27 +65,34 @@ int main(void) {
    srand(time(0));
 
    n = 10000000;
-   Read_n(&n, &local_n, my_rank, comm_sz, comm);
+   Read_n(&n, &local_n, &scalar, my_rank, comm_sz, comm);
    tstart = MPI_Wtime();
-   Allocate_vectors(&local_x, &local_y, &local_z, local_n, comm);
+   Allocate_vectors(&local_x, &local_y, &scaled_local_x, &scaled_local_y, local_n, comm);
 
    Initialize_vector(local_x, local_n, n, "x", my_rank, comm);
    Initialize_vector(local_y, local_n, n, "y", my_rank, comm);
 
-   Parallel_vector_sum(local_x, local_y, local_z, local_n);
+   Parallel_vector_dot_product(local_x, local_y, &dot_prod, comm, local_n);
+   Parallel_vector_scalar_mul(local_x, scaled_local_x, scalar, local_n);
+   Parallel_vector_scalar_mul(local_y, scaled_local_y, scalar, local_n);
    tend = MPI_Wtime();
 
    Print_vector(local_x, local_n, n, "x is", my_rank, comm);
    Print_vector(local_y, local_n, n, "y is", my_rank, comm);
-   Print_vector(local_z, local_n, n, "The sum is", my_rank, comm);
+   Print_vector(scaled_local_x, local_n, n, "x scaled is", my_rank, comm);
+   Print_vector(scaled_local_y, local_n, n, "y scaled is", my_rank, comm);
 
    if(my_rank==0)
-    printf("\nTook %f ms to run\n", (tend-tstart)*1000);
+   {
+      printf("\nThe dot product is: %f", dot_prod);
+      printf("\nTook %f ms to run\n", (tend-tstart)*1000);
+   }
 
 
    free(local_x);
    free(local_y);
-   free(local_z);
+   free(scaled_local_x);
+   free(scaled_local_y);
 
    MPI_Finalize();
 
@@ -141,6 +153,7 @@ void Check_for_error(
 void Read_n(
       int*      n_p        /* out */,
       int*      local_n_p  /* out */,
+      double*   scalar     /* out */,
       int       my_rank    /* in  */,
       int       comm_sz    /* in  */,
       MPI_Comm  comm       /* in  */) {
@@ -150,9 +163,13 @@ void Read_n(
    if (my_rank == 0) {
       printf("What's the order of the vectors?\n");
       scanf("%d", n_p);
+      printf("Introduce a scalar number to multiply the vectors by:\n");
+      scanf("%lf", scalar);
    }
    MPI_Bcast(n_p, 1, MPI_INT, 0, comm);
-   if (*n_p <= 0 || *n_p % comm_sz != 0) local_ok = 0;
+   MPI_Bcast(scalar, 1, MPI_DOUBLE, 0, comm);
+   if (*n_p <= 0 || *n_p % comm_sz != 0 || 
+      *scalar <= 0) local_ok = 0;
    Check_for_error(local_ok, fname,
          "n should be > 0 and evenly divisible by comm_sz", comm);
    *local_n_p = *n_p/comm_sz;
@@ -170,20 +187,23 @@ void Read_n(
  * Errors:    One or more of the calls to malloc fails
  */
 void Allocate_vectors(
-      double**   local_x_pp  /* out */,
-      double**   local_y_pp  /* out */,
-      double**   local_z_pp  /* out */,
-      int        local_n     /* in  */,
-      MPI_Comm   comm        /* in  */) {
+      double**   local_x_pp         /* out */,
+      double**   local_y_pp         /* out */,
+      double**   scaled_local_x_pp  /* out */,
+      double**   scaled_local_y_pp  /* out */,
+      int        local_n            /* in  */,
+      MPI_Comm   comm               /* in  */) {
    int local_ok = 1;
    char* fname = "Allocate_vectors";
 
    *local_x_pp = malloc(local_n*sizeof(double));
    *local_y_pp = malloc(local_n*sizeof(double));
-   *local_z_pp = malloc(local_n*sizeof(double));
+   *scaled_local_x_pp = malloc(local_n*sizeof(double));
+   *scaled_local_y_pp = malloc(local_n*sizeof(double));
 
    if (*local_x_pp == NULL || *local_y_pp == NULL ||
-       *local_z_pp == NULL) local_ok = 0;
+       *scaled_local_x_pp == NULL || *scaled_local_y_pp == NULL) 
+            local_ok = 0;
    Check_for_error(local_ok, fname, "Can't allocate local vector(s)",
          comm);
 }  /* Allocate_vectors */
@@ -351,36 +371,28 @@ void Initialize_vector(double local_a[], int local_n, int n, char vec_name[],
 void Parallel_vector_dot_product(
       double  local_x[]  /* in  */,
       double  local_y[]  /* in  */,
-      double  local_z[]  /* out */,
-      
+      double *total_sum  /* out */,
+      MPI_Comm comm      /* in  */,
       int     local_n    /* in  */) {
    int local_i;
-   double local_sum=0;
+   double local_sum = 0;
 
    for (local_i = 0; local_i < local_n; local_i++)
       local_sum = local_sum + (local_x[local_i] * local_y[local_i]);
-      //printf("%f ", local_sum);
-      
-
-
+   
+   MPI_Allreduce(&local_sum, total_sum, 1, MPI_DOUBLE, MPI_SUM, comm); 
 }  /* Parallel_vector_dot product */
 
-void Parallel_vector_scalar_multiplication(
-    int scalar,
-      double  local_x[]  /* in  */,
-      double  local_y[]  /* in  */,
-      double  local_z[]  /* out */,
-      double local_z2[],
-      int     local_n    /* in  */) {
+void Parallel_vector_scalar_mul(
+      double  local_in[]      /* in  */,
+      double  local_out[]     /* out */,
+      double  scalar          /* in  */,
+      int     local_n         /* in  */) {
+
    int local_i;
-   
 
-   for (local_i = 0; local_i < local_n; local_i++){
-    local_z[local_i] = local_x[local_i] *scalar;
-    local_z2[local_i] = local_y[local_i] *scalar;
-    }
-      
-
+   for (local_i = 0; local_i < local_n; local_i++)
+     local_out[local_i] = local_in[local_i] * scalar;
 
 }  /* Parallel_vector_scalar operation */
 
