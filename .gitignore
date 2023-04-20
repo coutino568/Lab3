@@ -1,1 +1,4 @@
 *.o
+.vscode/tasks.json
+mpi_vector_add.exe
+*.exe
