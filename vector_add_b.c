@@ -18,6 +18,7 @@
 #include <stdlib.h>
 #include <time.h>
 
+
 void Read_n(int* n_p);
 void Allocate_vectors(double** x_pp, double** y_pp, double** z_pp, int n);
 void Initialize_vectors(double* x_p, double* y_p, int n);
@@ -31,21 +32,24 @@ int main(void) {
    double *x, *y, *z;
 
    Read_n(&n);
+   clock_t start = clock();
    Allocate_vectors(&x, &y, &z, n);
 
    srand(time(0));
    Initialize_vectors(x, y, n);
 
+   Vector_sum(x, y, z, n);
+
+   clock_t end = clock();
+   float seconds = (float)(end - start) / CLOCKS_PER_SEC;
+
    Print_vector(x, n, "x:");
    printf("\n");
    Print_vector(y, n, "y:");
    printf("\n");
-
-   
-
-   Vector_sum(x, y, z, n);
-
    Print_vector(z, n, "The sum is");
+
+   printf("\nTook %f ms to run\n",seconds*1000);
 
    free(x);
    free(y);

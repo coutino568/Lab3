@@ -65,16 +65,18 @@ int main(void) {
    Allocate_vectors(&local_x, &local_y, &local_z, local_n, comm);
 
    Initialize_vector(local_x, local_n, n, "x", my_rank, comm);
-   Print_vector(local_x, local_n, n, "x is", my_rank, comm);
    Initialize_vector(local_y, local_n, n, "y", my_rank, comm);
-   Print_vector(local_y, local_n, n, "y is", my_rank, comm);
 
    Parallel_vector_sum(local_x, local_y, local_z, local_n);
    tend = MPI_Wtime();
 
+   Print_vector(local_x, local_n, n, "x is", my_rank, comm);
+   Print_vector(local_y, local_n, n, "y is", my_rank, comm);
    Print_vector(local_z, local_n, n, "The sum is", my_rank, comm);
+
    if(my_rank==0)
     printf("\nTook %f ms to run\n", (tend-tstart)*1000);
+
 
    free(local_x);
    free(local_y);
